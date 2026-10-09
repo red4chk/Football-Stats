@@ -1,0 +1,30 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: football_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: football_stats
+    volumes:
+      - mongo_data:/data/db
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: football_metabase
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: h2
+    depends_on:
+      - mongodb
+    volumes:
+      - metabase_data:/metabase-data
+
+volumes:
+  mongo_data:
+  metabase_data:
