@@ -9,3 +9,6 @@ tmp*/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Local-only planning artifacts
+ROADMAP.md
