@@ -4,14 +4,14 @@
 
 ## Status
 
-Built incrementally over 10 days. **Progress: Days 1–3 complete.**
+Built incrementally over 10 days. **Progress: Days 1–4 complete.**
 
 | Day | Phase | Status |
 |---|---|---|
 | 1 | Project skeleton, dependency manifests, workspace config | ✅ |
 | 2 | Config loader, MongoDB layer, HTTP client, Docker Compose | ✅ |
 | 3 | Ingestion: standings, teams, match fixtures | ✅ |
-| 4 | Ingestion: players, top scorers/assists, `fetch_all.py` runner | ⏳ next |
+| 4 | Ingestion: players, top scorers/assists, `fetch_all.py` runner | ✅ |
 | 5–10 | Processing, Dagster orchestration, tests, polish, deployment | ⏳ |
 
 ---
@@ -57,6 +57,9 @@ python -c "from db.collections import setup_indexes; setup_indexes()"
 python ingestion/fetch_standings.py
 python ingestion/fetch_teams.py
 python ingestion/fetch_matches.py
+python ingestion/fetch_players.py
+python ingestion/fetch_top_scorers.py
+python ingestion/fetch_top_assists.py
 ```
 
 Optional league/season override via environment:
@@ -65,7 +68,17 @@ Optional league/season override via environment:
 $env:DEFAULT_LEAGUE_ID=140; $env:DEFAULT_SEASON=2024; python ingestion/fetch_teams.py
 ```
 
-> **Day 4 will add `python ingestion/fetch_all.py`** — a single command that runs every fetcher in sequence.
+### 6. Or run the full ingestion in one command
+
+```bash
+python ingestion/fetch_all.py
+```
+
+This runs every fetcher in dependency order (standings → teams → team statistics → matches → players → top scorers → top assists). Override the league/season:
+
+```bash
+python ingestion/fetch_all.py --league 140 --season 2024
+```
 
 ---
 
@@ -84,7 +97,11 @@ football-stats/
 │   ├── base.py              # HTTP client: retries, rate-limit handling, pagination
 │   ├── fetch_standings.py   # League standings
 │   ├── fetch_teams.py       # Team list + per-team statistics
-│   └── fetch_matches.py     # Match fixtures (full season or date range)
+│   ├── fetch_matches.py     # Match fixtures (full season or date range)
+│   ├── fetch_players.py     # Player roster (paginated)
+│   ├── fetch_top_scorers.py # Top scorers leaderboard
+│   ├── fetch_top_assists.py # Top assists leaderboard
+│   └── fetch_all.py         # Full ingestion orchestrator (all fetchers in order)
 │
 ├── processing/              # (Day 5+) Pandas transformations
 ├── pipelines/               # (Day 7+) Dagster assets, jobs, schedules
@@ -108,9 +125,9 @@ These collections are populated directly from API-Football by the ingestion laye
 | `teams` | `fetch_teams.py` | `team.id` (with `league_id`, `season` denormalized) |
 | `team_statistics` | `fetch_teams.py` → `fetch_team_statistics()` | `team.id`, `league.id`, `league.season` |
 | `matches` | `fetch_matches.py` | `fixture.id` |
-| `players` | *(Day 4)* | — |
-| `top_scorers` | *(Day 4)* | — |
-| `top_assists` | *(Day 4)* | — |
+| `players` | `fetch_players.py` | `player.id`, `statistics.0.league.season` |
+| `top_scorers` | `fetch_top_scorers.py` | `player.id`, `season`, `league_id` |
+| `top_assists` | `fetch_top_assists.py` | `player.id`, `season`, `league_id` |
 
 ---
 
@@ -129,12 +146,12 @@ All settings are read from environment variables (see `.env.example` for the ful
 | `MAX_RETRIES` | `3` | HTTP retry count for 429/5xx |
 | `RETRY_BACKOFF` | `2` | Retry backoff factor |
 | `PAGINATION_SLEEP` | `7` | Sleep between paginated API pages (respects free-tier rate limit) |
+| `MAX_PLAYER_PAGES` | `0` (all pages) | Hard cap on `/players` pagination pages (0 = unlimited) |
 
 ---
 
 ## What's Next
 
-- **Day 4:** Player roster, top scorers & assists fetchers, and the `fetch_all.py` full-pull orchestrator.
 - **Day 5–6:** Pandas processing layer — normalized matches, form tables, player rankings, team aggregates, league summary.
 - **Day 7:** Dagster software-defined assets, jobs, and daily cron schedules.
 - **Day 8–10:** Tests, logging/hardening, Metabase dashboards, CI, and deployment guides.
