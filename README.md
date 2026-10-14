@@ -150,8 +150,9 @@ All settings are read from environment variables (see `.env.example` for the ful
 
 ---
 
-## What's Next
+## What's Nextt 
 
-- **Day 5–6:** Pandas processing layer — normalized matches, form tables, player rankings, team aggregates, league summary.
+
+- **Day 5–6:** Pandas processing layer — normalized matches, form tables, player rankings, team aggregates, league summary .
 - **Day 7:** Dagster software-defined assets, jobs, and daily cron schedules.
 - **Day 8–10:** Tests, logging/hardening, Metabase dashboards, CI, and deployment guides.
