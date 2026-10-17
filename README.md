@@ -4,7 +4,7 @@
 
 ## Status
 
-Built incrementally over 10 days. **Progress: Days 1–4 complete.**
+Built incrementally over 10 days. **Progress: Days 1–5 complete.**
 
 | Day | Phase | Status |
 |---|---|---|
@@ -12,7 +12,8 @@ Built incrementally over 10 days. **Progress: Days 1–4 complete.**
 | 2 | Config loader, MongoDB layer, HTTP client, Docker Compose | ✅ |
 | 3 | Ingestion: standings, teams, match fixtures | ✅ |
 | 4 | Ingestion: players, top scorers/assists, `fetch_all.py` runner | ✅ |
-| 5–10 | Processing, Dagster orchestration, tests, polish, deployment | ⏳ |
+| 5 | Processing: match normalization, form tables, head-to-head | ✅ |
+| 6–10 | Player rankings, team stats, Dagster, tests, polish, deployment | ⏳ |
 
 ---
 
@@ -103,7 +104,8 @@ football-stats/
 │   ├── fetch_top_assists.py # Top assists leaderboard
 │   └── fetch_all.py         # Full ingestion orchestrator (all fetchers in order)
 │
-├── processing/              # (Day 5+) Pandas transformations
+├── processing/              # Pandas transformations
+│   └── clean_matches.py     # Flatten fixtures -> processed_matches, form tables, H2H
 ├── pipelines/               # (Day 7+) Dagster assets, jobs, schedules
 │
 ├── docker-compose.yml       # MongoDB 7.0 + Metabase
@@ -150,9 +152,8 @@ All settings are read from environment variables (see `.env.example` for the ful
 
 ---
 
-## What's Nextt 
+## What's Next
 
-
-- **Day 5–6:** Pandas processing layer — normalized matches, form tables, player rankings, team aggregates, league summary .
+- **Day 6:** Player rankings, aggregated team stats, xG estimates, league summary, and `process_all.py`.
 - **Day 7:** Dagster software-defined assets, jobs, and daily cron schedules.
 - **Day 8–10:** Tests, logging/hardening, Metabase dashboards, CI, and deployment guides.
