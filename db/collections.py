@@ -7,8 +7,10 @@ Dagster job) guarantees that the query patterns used by downstream code are
 backed by unique or secondary indexes.
 """
 import logging
+import math
+from collections.abc import Iterable
 
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, UpdateOne
 from pymongo.collection import Collection
 
 from db.connection import get_db
@@ -42,6 +44,57 @@ PROCESSED_COLLECTIONS = [
 def get_collection(name: str) -> Collection:
     """Return a collection handle from the configured database."""
     return get_db()[name]
+
+
+def _to_bson_value(value):
+    """Coerce pandas/numpy scalars into BSON-serializable Python values.
+
+    ``Timestamp`` becomes :class:`datetime.datetime`, numpy scalars become
+    native Python scalars, and missing values (``NaN``, ``pd.NA``, ``pd.NaT``)
+    become ``None``.
+    """
+    if value is None:
+        return None
+    if value.__class__.__name__ in {"NAType", "NaTType"}:
+        return None
+    if hasattr(value, "to_pydatetime"):
+        return value.to_pydatetime()
+    if hasattr(value, "item"):
+        value = value.item()
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    return value
+
+
+def bulk_upsert(
+    collection_name: str,
+    records: Iterable[dict],
+    key_fields: list[str],
+) -> int:
+    """Upsert ``records`` into ``collection_name`` keyed by ``key_fields``.
+
+    Records missing any of the key fields are skipped.  Returns the number of
+    documents upserted or modified.
+    """
+    ops = []
+    for record in records:
+        cleaned = {k: _to_bson_value(v) for k, v in record.items()}
+        key = {field: cleaned.get(field) for field in key_fields}
+        if any(value is None for value in key.values()):
+            continue
+        ops.append(UpdateOne(key, {"$set": cleaned}, upsert=True))
+
+    if not ops:
+        return 0
+
+    result = get_collection(collection_name).bulk_write(ops, ordered=False)
+    logger.info(
+        "%s upserted=%d modified=%d",
+        collection_name,
+        result.upserted_count,
+        result.modified_count,
+    )
+    return result.upserted_count + result.modified_count
 
 
 def setup_indexes() -> None:

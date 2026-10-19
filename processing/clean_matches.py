@@ -7,13 +7,11 @@ payload.  This module flattens it into a rectangular, query-friendly frame
 reused to derive team form tables and head-to-head histories.
 """
 import logging
-from datetime import datetime
 
 import pandas as pd
-from pymongo import UpdateOne
 
 from config.settings import DEFAULT_LEAGUE_ID, DEFAULT_SEASON
-from db.collections import get_collection
+from db.collections import bulk_upsert, get_collection
 
 logger = logging.getLogger(__name__)
 
@@ -244,19 +242,6 @@ def head_to_head(df: pd.DataFrame, team_a_id: int, team_b_id: int) -> pd.DataFra
     return df.loc[mask].sort_values("date").reset_index(drop=True)
 
 
-def _to_python(value):
-    """Convert pandas/numpy scalars into BSON-friendly Python values."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
-        return None
-    if isinstance(value, pd.Timestamp):
-        return value.to_pydatetime()
-    if pd.isna(value):
-        return None
-    if hasattr(value, "item"):
-        return value.item()
-    return value
-
-
 def save_processed_matches(df: pd.DataFrame) -> int:
     """Upsert the flattened frame into ``processed_matches`` by ``fixture_id``.
 
@@ -265,28 +250,18 @@ def save_processed_matches(df: pd.DataFrame) -> int:
     if df.empty:
         logger.info("No processed matches to save")
         return 0
+    return bulk_upsert("processed_matches", df.to_dict("records"), ["fixture_id"])
 
-    collection = get_collection("processed_matches")
-    ops = []
-    for record in df.to_dict("records"):
-        cleaned = {k: _to_python(v) for k, v in record.items()}
-        fixture_id = cleaned.get("fixture_id")
-        if fixture_id is None:
-            continue
-        ops.append(UpdateOne({"fixture_id": fixture_id}, {"$set": cleaned}, upsert=True))
 
-    if not ops:
-        logger.info("No valid processed matches to save")
+def save_processed_form(df: pd.DataFrame) -> int:
+    """Upsert a form table into ``processed_form`` keyed by ``(team_id, season)``.
+
+    Returns the number of documents upserted or modified.
+    """
+    if df.empty:
+        logger.info("No form rows to save")
         return 0
-
-    result = collection.bulk_write(ops, ordered=False)
-    count = result.upserted_count + result.modified_count
-    logger.info(
-        "processed_matches upserted=%d modified=%d",
-        result.upserted_count,
-        result.modified_count,
-    )
-    return count
+    return bulk_upsert("processed_form", df.to_dict("records"), ["team_id", "season"])
 
 
 if __name__ == "__main__":
