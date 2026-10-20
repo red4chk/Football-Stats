@@ -4,7 +4,7 @@
 
 ## Status
 
-Built incrementally over 10 days. **Progress: Days 1–5 complete.**
+Built incrementally over 10 days. **Progress: Days 1–6 complete.**
 
 | Day | Phase | Status |
 |---|---|---|
@@ -13,7 +13,8 @@ Built incrementally over 10 days. **Progress: Days 1–5 complete.**
 | 3 | Ingestion: standings, teams, match fixtures | ✅ |
 | 4 | Ingestion: players, top scorers/assists, `fetch_all.py` runner | ✅ |
 | 5 | Processing: match normalization, form tables, head-to-head | ✅ |
-| 6–10 | Player rankings, team stats, Dagster, tests, polish, deployment | ⏳ |
+| 6 | Processing: player rankings, team stats, xG, league summary, `process_all.py` | ✅ |
+| 7–10 | Dagster orchestration, tests, polish, deployment | ⏳ |
 
 ---
 
@@ -81,6 +82,20 @@ This runs every fetcher in dependency order (standings → teams → team statis
 python ingestion/fetch_all.py --league 140 --season 2024
 ```
 
+### 7. Run the processing layer
+
+Transform the raw collections into the query-ready `processed_*` collections:
+
+```bash
+python processing/process_all.py
+```
+
+This flattens the fixtures and player statistics, then derives team stats, recent form, player rankings, the league summary, and the top-scorer/assist leaderboards. Override the league/season the same way:
+
+```bash
+python processing/process_all.py --league 140 --season 2024
+```
+
 ---
 
 ## Project Structure
@@ -105,7 +120,10 @@ football-stats/
 │   └── fetch_all.py         # Full ingestion orchestrator (all fetchers in order)
 │
 ├── processing/              # Pandas transformations
-│   └── clean_matches.py     # Flatten fixtures -> processed_matches, form tables, H2H
+│   ├── clean_matches.py     # Flatten fixtures -> processed_matches, form tables, H2H
+│   ├── clean_players.py     # Explode player statistics, per-90 rankings
+│   ├── stats.py             # Team stats, xG proxy, leaderboards, league summary
+│   └── process_all.py       # Full processing orchestrator (all stages in order)
 ├── pipelines/               # (Day 7+) Dagster assets, jobs, schedules
 │
 ├── docker-compose.yml       # MongoDB 7.0 + Metabase
@@ -133,6 +151,23 @@ These collections are populated directly from API-Football by the ingestion laye
 
 ---
 
+## Data Model — Processed Collections
+
+These collections are derived from the raw data by `processing/process_all.py` and are what
+Metabase queries directly. Every write is an idempotent upsert on the key shown.
+
+| Collection | Produced by | Key fields | Contents |
+|---|---|---|---|
+| `processed_matches` | `clean_matches.py` → `save_processed_matches()` | `fixture_id` | Flattened fixture rows (teams, goals, half-time score, venue, round) |
+| `processed_form` | `clean_matches.py` → `save_processed_form()` | `team_id`, `season` | Last-N form: W/D/L, points, goal difference, form string |
+| `processed_players` | `clean_players.py` → `save_processed_players()` | `player_id`, `season` | Flat player rows + `goals_per_90`, `assists_per_90`, `goal_contributions`, `shot_accuracy` |
+| `processed_teams` | `stats.py` → `save_processed_teams()` | `team_id`, `season` | Team table: played/wins/draws/losses, goals for/against, points, `win_rate` |
+| `processed_top_scorers` | `stats.py` → `save_top_scorers()` | `player_id`, `season`, `league_id` | Ranked scorers with per-90 metrics |
+| `processed_top_assists` | `stats.py` → `save_top_assists()` | `player_id`, `season`, `league_id` | Ranked assisters with per-90 metrics |
+| `processed_league_summary` | `stats.py` → `save_league_summary()` | `league_id`, `season` | Season totals (goals, goals/match) + top scorer/assister + best team |
+
+---
+
 ## Configuration
 
 All settings are read from environment variables (see `.env.example` for the full template):
@@ -154,6 +189,5 @@ All settings are read from environment variables (see `.env.example` for the ful
 
 ## What's Next
 
-- **Day 6:** Player rankings, aggregated team stats, xG estimates, league summary, and `process_all.py`.
 - **Day 7:** Dagster software-defined assets, jobs, and daily cron schedules.
 - **Day 8–10:** Tests, logging/hardening, Metabase dashboards, CI, and deployment guides.
