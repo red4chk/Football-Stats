@@ -4,7 +4,7 @@
 
 ## Status
 
-Built incrementally over 10 days. **Progress: Days 1–6 complete.**
+Built incrementally over 10 days. **Progress: Days 1–7 complete.**
 
 | Day | Phase | Status |
 |---|---|---|
@@ -14,7 +14,8 @@ Built incrementally over 10 days. **Progress: Days 1–6 complete.**
 | 4 | Ingestion: players, top scorers/assists, `fetch_all.py` runner | ✅ |
 | 5 | Processing: match normalization, form tables, head-to-head | ✅ |
 | 6 | Processing: player rankings, team stats, xG, league summary, `process_all.py` | ✅ |
-| 7–10 | Dagster orchestration, tests, polish, deployment | ⏳ |
+| 7 | Dagster orchestration: assets, jobs, daily schedules | ✅ |
+| 8–10 | Tests, logging/hardening, Metabase dashboards, deployment | ⏳ |
 
 ---
 
@@ -96,6 +97,23 @@ This flattens the fixtures and player statistics, then derives team stats, recen
 python processing/process_all.py --league 140 --season 2024
 ```
 
+### 8. Orchestrate with Dagster
+
+Launch the Dagster UI (reads `pipelines.definitions` via `pyproject.toml`):
+
+```bash
+dagster dev
+```
+
+Open http://localhost:3000, pick a job from the **Jobs** tab, and materialize it. Each asset
+reports the number of records it wrote, so row counts are visible immediately after a run.
+
+To materialize the whole graph headless:
+
+```bash
+dagster asset materialize --select '*' -m pipelines.definitions
+```
+
 ---
 
 ## Project Structure
@@ -124,7 +142,11 @@ football-stats/
 │   ├── clean_players.py     # Explode player statistics, per-90 rankings
 │   ├── stats.py             # Team stats, xG proxy, leaderboards, league summary
 │   └── process_all.py       # Full processing orchestrator (all stages in order)
-├── pipelines/               # (Day 7+) Dagster assets, jobs, schedules
+│
+├── pipelines/               # Dagster orchestration
+│   ├── assets.py            # Software-defined assets (ingestion + processing groups)
+│   ├── schedules.py         # Daily ingest/process jobs + cron schedules
+│   └── definitions.py       # Consolidated Definitions loaded by `dagster dev`
 │
 ├── docker-compose.yml       # MongoDB 7.0 + Metabase
 ├── reset_db.py              # Drop raw / processed / all collections
@@ -168,6 +190,43 @@ Metabase queries directly. Every write is an idempotent upsert on the key shown.
 
 ---
 
+## Dagster Jobs & Schedules
+
+The asset graph is split into two groups — `ingestion` (raw API pulls) and `processing`
+(derived collections). Dependencies encode the ordering, so a single job materializes
+everything in the correct sequence.
+
+### Assets
+
+| Group | Asset | Depends on | Writes to |
+|---|---|---|---|
+| `ingestion` | `standings` | — | `standings` |
+| `ingestion` | `teams` | — | `teams` |
+| `ingestion` | `matches` | — | `matches` |
+| `ingestion` | `players` | — | `players` |
+| `ingestion` | `top_stats` | `players` | `top_scorers`, `top_assists` |
+| `processing` | `processed_matches` | `matches` | `processed_matches` |
+| `processing` | `processed_players` | `players` | `processed_players` |
+| `processing` | `processed_teams` | `processed_matches` | `processed_teams` |
+| `processing` | `processed_form` | `processed_matches` | `processed_form` |
+| `processing` | `processed_top_scorers` | `processed_players` | `processed_top_scorers` |
+| `processing` | `processed_top_assists` | `top_stats` | `processed_top_assists` |
+| `processing` | `league_summary` | `processed_matches`, `processed_players` | `processed_league_summary` |
+
+### Jobs & schedules
+
+| Job | Selection | Schedule | Cron (UTC) |
+|---|---|---|---|
+| `daily_ingest_job` | `AssetSelection.groups("ingestion")` | `daily_ingest_schedule` | `0 6 * * *` |
+| `daily_process_job` | `AssetSelection.groups("processing")` | `daily_process_schedule` | `0 7 * * *` |
+| `full_pipeline_job` | `AssetSelection.all()` | *(manual)* | — |
+
+Every asset accepts an optional `LeagueSeasonConfig` (`league_id`, `season`) so a run can be
+scoped to another league from the launchpad; both fields default to `DEFAULT_LEAGUE_ID` /
+`DEFAULT_SEASON`.
+
+---
+
 ## Configuration
 
 All settings are read from environment variables (see `.env.example` for the full template):
@@ -189,5 +248,6 @@ All settings are read from environment variables (see `.env.example` for the ful
 
 ## What's Next
 
-- **Day 7:** Dagster software-defined assets, jobs, and daily cron schedules.
-- **Day 8–10:** Tests, logging/hardening, Metabase dashboards, CI, and deployment guides.
+- **Day 8:** pytest infrastructure and unit/integration tests for config, DB, ingestion, processing, and assets.
+- **Day 9:** Centralized logging, idempotency/retry hardening, and Metabase dashboard blueprints.
+- **Day 10:** E2E smoke script, performance tuning, CI workflow, and deployment guides.
