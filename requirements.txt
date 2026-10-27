@@ -5,3 +5,5 @@ dagster==1.9.3
 dagster-webserver==1.9.3
 python-dotenv==1.0.1
 urllib3==2.2.3
+pytest==8.3.3
+pytest-mock==3.14.0
