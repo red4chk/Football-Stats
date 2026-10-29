@@ -13,6 +13,23 @@ dependencies = [
     "urllib3==2.2.3",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+    "pytest-mock==3.14.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: fast, fully isolated tests",
+    "integration: tests that touch external services (MongoDB, Dagster)",
+]
+
 [tool.dagster]
 module_name = "pipelines.definitions"
 working_directory = "."
